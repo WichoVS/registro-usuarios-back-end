@@ -5,8 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\EntidadFederativa;
 use App\Models\EstadoCivil;
 use App\Models\Genero;
-use Illuminate\Http\Request;
+use App\Models\Persona;
 use App\Models\Usuario;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Exception;
 
@@ -26,16 +27,15 @@ class UsersController extends Controller
     public function getAll(Request $request)
     {
         try {
-            $users = Usuario::query()->get();
+            $users = Persona::query()->get();
 
             foreach ($users as $user) {
-                unset($user->Password);
                 //Creo que esto se puede hacer con un join.
-                $enFed = EntidadFederativa::query()->find($user->EntidadFederativaNacimiento)->first();
+                $enFed = EntidadFederativa::query()->find($user->EntidadFederativaNacimiento);
                 $user->EntidadFederativaNacimiento = $enFed;
-                $edoCivil = EstadoCivil::query()->find($user->EstadoCivil)->first();
+                $edoCivil = EstadoCivil::query()->find($user->EstadoCivil);
                 $user->EstadoCivil = $edoCivil;
-                $genero = EntidadFederativa::query()->find($user->Genero)->first();
+                $genero = Genero::query()->find($user->Genero);
                 $user->Genero = $genero;
             }
 
@@ -55,19 +55,21 @@ class UsersController extends Controller
             if (strlen($curp) != 18)
                 return response()->json("CURP is not valid", 400);
 
-            $user = Usuario::query()->where('CURP', '=', $curp)->first();
-            if ($user == null)
-                return response()->json("Usuario not found", 404);
+            $rows = Persona::query()->where('CURP', '=', $curp)->get();
+            if (count($rows) == 0)
+                return response()->json("Persona not found", 404);
 
-            unset($user->Password);
+            $user = $rows[0];
+
             //Creo que esto se puede hacer con un join.
-            $enFed = EntidadFederativa::query()->find($user->EntidadFederativaNacimiento)->first();
+            $enFed = EntidadFederativa::query()->find($user->EntidadFederativaNacimiento);
             $user->EntidadFederativaNacimiento = $enFed;
-            $edoCivil = EstadoCivil::query()->find($user->EstadoCivil)->first();
+            $edoCivil = EstadoCivil::query()->find($user->EstadoCivil);
             $user->EstadoCivil = $edoCivil;
-            $genero = EntidadFederativa::query()->find($user->Genero)->first();
+            $genero = Genero::query()->find($user->Genero);
             $user->Genero = $genero;
             return response()->json($user, 200);
+
         } catch (Exception $e) {
             return response()->json($e->getMessage(), 500);
         }
@@ -85,14 +87,11 @@ class UsersController extends Controller
                 'EntidadFederativaNacimiento' => 'required|numeric',
                 'EstadoCivil' => 'required|numeric',
                 'Genero' => 'required|numeric',
-                'Email' => 'required|email:filter',
-                'Password' => 'required|string',
-                'isAdmin' => 'boolean',
             ]);
             if ($validator->fails())
                 return response()->json($validator->failed(), 400);
 
-            $user = new Usuario();
+            $user = new Persona();
             $user->Nombre = $request->input('Nombre');
             $user->ApellidoPaterno = $request->input('ApellidoPaterno');
             $user->ApellidoMaterno = $request->input('ApellidoMaterno');
@@ -101,21 +100,19 @@ class UsersController extends Controller
             #pero por cuestiones de tiempo lo haré así.
             $entidadFederativa = EntidadFederativa::query()->find($request->input('EntidadFederativaNacimiento'));
             if ($entidadFederativa == null)
-                return response()->json("Entidad Federativa not found, Usuario not created", 404);
+                return response()->json("Entidad Federativa not found, Persona not created", 404);
             $user->EntidadFederativaNacimiento = $entidadFederativa;
+
             $estadoCivil = EstadoCivil::query()->find($request->input('EstadoCivil'));
+            if ($estadoCivil == null)
+                return response()->json("Estado Civil not found, Persona not created", 404);
             $user->EstadoCivil = $estadoCivil;
+
             $genero = Genero::query()->find($request->input('Genero'));
             if ($genero == null)
-                return response()->json("Genero not found, Usuario not created", 404);
+                return response()->json("Genero not found, Persona not created", 404);
             $user->Genero = $genero;
-            $user->Email = $request->input('Email');
-            $user->Password = $request->input('Password');
-            if ($request->input('isAdmin') == null) {
-                $user->isAdmin = false;
-            } else {
-                $user->isAdmin = $request->input('isAdmin');
-            }
+
             $user->CURP = implode($this->generarCURP($user));
 
             //Me di cuenta que las foreign keys se guardan solo con el ID, como uso el modelo para generar el CURP, regreso su valor a solo ID
@@ -127,7 +124,6 @@ class UsersController extends Controller
             $user->save();
 
             //Como regreso el objeto creado, quito los valores que no son necesarios.
-            unset($user->Password);
             unset($user->id);
             return response()->json($user, 200);
         } catch (Exception $e) {
@@ -148,37 +144,42 @@ class UsersController extends Controller
                 'EntidadFederativaNacimiento' => 'required|numeric',
                 'EstadoCivil' => 'required|numeric',
                 'Genero' => 'required|numeric',
-                'Email' => 'required|email:filter',
             ]);
             if ($validator->fails())
                 return response()->json($validator->failed(), 400);
 
-            $userToEdit = Usuario::query()->where('CURP', '=', $request->input('CURP'))->first();
-            if ($userToEdit == null)
-                return response()->json("Usuario not found", 404);
+            $rows = Persona::query()->where('CURP', '=', $request->input('CURP'))->get();
+            if (count($rows) == 0)
+                return response()->json("Persona not found", 404);
+            $userToEdit = $rows[0];
+
 
             $userToEdit->Nombre = $request->input('Nombre');
             $userToEdit->ApellidoPaterno = $request->input('ApellidoPaterno');
             $userToEdit->ApellidoMaterno = $request->input('ApellidoMaterno');
             $userToEdit->FechaNacimiento = $request->input('FechaNacimiento');
-            $enFed = EntidadFederativa::query()->find($request->input('EntidadFederativaNAcimiento'))->exists();
+
+
+
+            $enFed = EntidadFederativa::query()->find($request->input('EntidadFederativaNacimiento'))->exists();
             if (!$enFed)
-                return response()->json("Entidad Federativa not found, User not updated", 404);
+                return response()->json("Entidad Federativa not found, Persona not updated", 404);
             $userToEdit->EntidadFederativaNacimiento = $request->input('EntidadFederativaNacimiento');
+
             $edoCivil = EstadoCivil::query()->find($request->input('EstadoCivil'))->exists();
             if (!$edoCivil)
-                return response()->json("Estado Civil not found, User not updated", 404);
-            $userToEdit->EstadoCivil = $request->input('Estado Civil');
+                return response()->json("Estado Civil not found, Persona not updated", 404);
+            $userToEdit->EstadoCivil = $request->input('EstadoCivil');
+
             $genero = Genero::query()->find($request->input('Genero'))->exists();
             if (!$genero)
-                return response()->json("Estado Civil not found, User not updated", 404);
+                return response()->json("Genero not found, Persona not updated", 404);
             $userToEdit->Genero = $request->input('Genero');
-            $userToEdit->Email = $request->input('Email');
-
 
             $userToEdit->save();
+            return response()->json($userToEdit, 200);
         } catch (Exception $e) {
-            return response()->json($e->getMessage(), 500);
+            return response()->json($e->__toString(), 500);
         }
     }
 
@@ -190,45 +191,18 @@ class UsersController extends Controller
             if (strlen($curp) != 18)
                 return response()->json("CURP is not valid", 400);
 
-            $userToDelete = Usuario::query()->where('CURP', '=', $request->input('CURP'))->first();
+            $userToDelete = Persona::query()->find($curp);
             if ($userToDelete == null)
-                return response()->json("Usuario not found", 404);
+                return response()->json("Persona not found", 404);
 
             $userToDelete->delete();
+            return response()->json("Persona has been removed from database", 200);
         } catch (Exception $e) {
             return response()->json($e->getMessage(), 500);
         }
     }
 
-    public function login(Request $request)
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'Email' => 'required|email:filter',
-                'Password' => 'required|string'
-            ]);
-            if ($validator->fails())
-                return response()->json($validator->failed(), 400);
-
-            $user = Usuario::query()->where('Email', '=', $request->input('Email'))->where('Password', '=', $request->input('Password'))->first();
-            if ($user == null)
-                return response()->json("Usuario not found", 404);
-
-            unset($user->Password);
-            //Creo que esto se puede hacer con un join.
-            $enFed = EntidadFederativa::query()->find($user->EntidadFederativaNacimiento)->first();
-            $user->EntidadFederativaNacimiento = $enFed;
-            $edoCivil = EstadoCivil::query()->find($user->EstadoCivil)->first();
-            $user->EstadoCivil = $edoCivil;
-            $genero = EntidadFederativa::query()->find($user->Genero)->first();
-            $user->Genero = $genero;
-            return response()->json($user, 200);
-        } catch (Exception $e) {
-            return response()->json($e->getMessage(), 500);
-        }
-    }
-
-    public function generarCURP(Usuario $user)
+    public function generarCURP(Persona $user)
     {
         $curp = [];
         // Función para limpiar acentos y caracteres especiales
@@ -308,7 +282,7 @@ class UsersController extends Controller
         }
 
 
-        $users = Usuario::query()->where('CURP', 'LIKE', $curpInc . '%')->get();
+        $users = Persona::query()->where('CURP', 'LIKE', $curpInc . '%')->get();
         $curpValid = false;
         $lastDig = null;
         while (!$curpValid) {

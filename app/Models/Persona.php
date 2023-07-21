@@ -5,11 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Usuario extends Model
+class Persona extends Model
 {
     use HasFactory;
-    protected $table = 'usuarios';
+    protected $table = 'personas';
     public $timestamps = false;
-    protected $primaryKey = "Email";
+    protected $primaryKey = 'CURP';
     public $incrementing = false;
+
 }
